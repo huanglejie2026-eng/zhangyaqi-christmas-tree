@@ -3,152 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🎄 Merry Christmas</title>
+    <title>Merry Christmas</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
-        #loading {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; color: #d4af37; z-index: 999;
-            display: flex; justify-content: center; align-items: center;
-            font-size: 20px; transition: opacity 1s;
+        body {
+            background-color: #000;
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Times New Roman', serif;
+            touch-action: none; /* 禁止浏览器默认缩放 */
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
         }
         h1 {
-            position: absolute; top: 20px; width: 100%; text-align: center;
-            color: #d4af37; pointer-events: none; font-size: 30px;
-            text-shadow: 0 0 10px #d4af37; z-index: 10; margin: 0;
-            font-family: 'Times New Roman', serif;
+            color: #d4af37;
+            font-size: 40px;
+            margin: 0;
+            text-shadow: 0 0 10px rgba(212, 175, 55, 0.8);
+            letter-spacing: 2px;
         }
-        .tips {
-            position: absolute; bottom: 20px; width: 100%; text-align: center;
-            color: rgba(255,255,255,0.5); font-size: 12px; pointer-events: none;
+        p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            margin-top: 10px;
         }
     </style>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-    }
-    </script>
 </head>
 <body>
-    <div id="loading">Loading...</div>
-    <h1>Merry Christmas</h1>
-    <div class="tips">左右滑动旋转 · 双击切换模式</div>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    <div id="ui">
+        <h1>Merry Christmas</h1>
+        <p>✨ 拖动屏幕旋转 ✨</p>
+    </div>
+    <canvas id="canvas"></canvas>
 
-        // 场景初始化
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 2, 50);
+    <script>
+        // 这是一个不需要任何外部库的 3D 引擎
+        // 所有的数学运算都在本地完成，速度极快且不依赖网络
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let particles = [];
         
-        const renderer = new THREE.WebGLRenderer({antialias: false});
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        document.body.appendChild(renderer.domElement);
+        // 3D 参数
+        const FOCAL_LENGTH = 400; // 焦距
+        let angleY = 0; // 旋转角度
+        let targetAngleY = 0;
 
-        // 灯光
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-        const pLight = new THREE.PointLight(0xffaa00, 2, 50);
-        scene.add(pLight);
-
-        // 粒子系统
-        const geometry = new THREE.BufferGeometry();
-        const count = 1500;
-        const positions = new Float32Array(count * 3);
-        const colors = new Float32Array(count * 3);
-        const speeds = [];
-
-        const color1 = new THREE.Color(0xd4af37); // 金
-        const color2 = new THREE.Color(0xaa0000); // 红
-
-        for(let i=0; i<count; i++) {
-            positions[i*3] = (Math.random()-0.5)*50;
-            positions[i*3+1] = (Math.random()-0.5)*50;
-            positions[i*3+2] = (Math.random()-0.5)*50;
-            
-            const c = Math.random()>0.5 ? color1 : color2;
-            colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
-
-            speeds.push({
-                y: Math.random(), 
-                h: Math.random(), // 高度比例 0-1
-                angle: Math.random() * Math.PI * 2,
-                r: 10 + Math.random() * 5
-            });
+        // 初始化画布
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
         }
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        window.addEventListener('resize', resize);
+        resize();
 
-        const material = new THREE.PointsMaterial({
-            size: 0.6, vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false
-        });
-        const particles = new THREE.Points(geometry, material);
-        scene.add(particles);
-
-        // 后处理 (发光)
-        const composer = new EffectComposer(renderer);
-        composer.addPass(new RenderPass(scene, camera));
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85));
-
-        // 动画逻辑
-        let mode = 0; // 0: Tree, 1: Scatter
-        let time = 0;
-
-        // 触摸控制
-        let targetRotY = 0;
-        let startX = 0;
-        document.addEventListener('touchstart', e => startX = e.touches[0].clientX);
-        document.addEventListener('touchmove', e => {
-            const delta = e.touches[0].clientX - startX;
-            targetRotY += delta * 0.005;
-            startX = e.touches[0].clientX;
-        });
-        document.addEventListener('dblclick', () => mode = 1 - mode);
-
-        // 去掉 Loading
-        document.getElementById('loading').style.display = 'none';
-
-        function animate() {
-            requestAnimationFrame(animate);
-            time += 0.01;
-
-            const pos = geometry.attributes.position.array;
-
-            for(let i=0; i<count; i++) {
-                const s = speeds[i];
-                let tx, ty, tz;
-
-                if(mode === 0) { // Tree
-                    const h = -15 + s.h * 30;
-                    const r = 12 * (1 - s.h); // 锥形
-                    const angle = s.h * 20 + s.angle + time * 0.2;
-                    tx = Math.cos(angle) * r;
-                    ty = h;
-                    tz = Math.sin(angle) * r;
-                } else { // Scatter
-                    tx = Math.sin(time + i) * 20;
-                    ty = Math.cos(time + i*0.5) * 20;
-                    tz = Math.sin(time + i*0.2) * 20;
-                }
-
-                // Lerp 移动
-                pos[i*3] += (tx - pos[i*3]) * 0.05;
-                pos[i*3+1] += (ty - pos[i*3+1]) * 0.05;
-                pos[i*3+2] += (tz - pos[i*3+2]) * 0.05;
+        // 粒子类
+        class Particle {
+            constructor(isTree) {
+                this.isTree = isTree;
+                this.reset();
             }
-            geometry.attributes.position.needsUpdate = true;
 
-            particles.rotation.y += (targetRotY - particles.rotation.y) * 0.1;
-            composer.render();
+            reset() {
+                if (this.isTree) {
+                    // 圣诞树形状 (圆锥螺旋)
+                    this.h = Math.random(); // 高度 0-1
+                    const radius = 150 * (1 - this.h); // 底部宽，顶部窄
+                    const angle = this.h * 20 + Math.random() * 0.5; // 螺旋角度
+                    
+                    this.x = Math.cos(angle) * radius;
+                    this.y = (this.h - 0.5) * 400; // Y轴高度分布
+                    this.z = Math.sin(angle) * radius;
+                    
+                    // 颜色
+                    const r = Math.random();
+                    if(r > 0.9) this.color = '#fff'; // 白星
+                    else if(r > 0.6) this.color = '#d4af37'; // 金
+                    else this.color = '#2e8b57'; // 绿
+                    
+                    this.size = Math.random() * 3 + 1;
+                } else {
+                    // 背景雪花 (随机分布)
+                    this.x = (Math.random() - 0.5) * 1000;
+                    this.y = (Math.random() - 0.5) * 1000;
+                    this.z = (Math.random() - 0.5) * 1000;
+                    this.color = 'rgba(255,255,255,0.4)';
+                    this.size = Math.random() * 1.5;
+                }
+                
+                // 闪烁参数
+                this.alpha = Math.random();
+                this.alphaSpeed = 0.02 + Math.random() * 0.03;
+            }
+
+            draw() {
+                // 1. 旋转公式 (绕Y轴)
+                const cos = Math.cos(angleY);
+                const sin = Math.sin(angleY);
+                const rx = this.x * cos - this.z * sin;
+                const rz = this.z * cos + this.x * sin;
+                
+                // 2. 投影公式 (3D -> 2D)
+                // 加上深度偏移，防止除以0
+                const perspective = FOCAL_LENGTH / (FOCAL_LENGTH + rz + 400); 
+                
+                const screenX = width / 2 + rx * perspective;
+                const screenY = height / 2 + this.y * perspective;
+                const screenSize = this.size * perspective;
+
+                // 3. 绘制
+                if (perspective > 0) { // 只绘制在前面的
+                    this.alpha += this.alphaSpeed;
+                    if(this.alpha > 1 || this.alpha < 0.2) this.alphaSpeed *= -1;
+                    
+                    ctx.save();
+                    ctx.globalAlpha = Math.abs(this.alpha);
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, screenSize, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
         }
+
+        // 创建粒子
+        function init() {
+            particles = [];
+            // 800个组成树
+            for(let i=0; i<800; i++) particles.push(new Particle(true));
+            // 400个背景雪花
+            for(let i=0; i<400; i++) particles.push(new Particle(false));
+        }
+        init();
+
+        // 交互逻辑 (触摸旋转)
+        let startX = 0;
+        let isDragging = false;
+
+        document.addEventListener('touchstart', e => {
+            startX = e.touches[0].clientX;
+            isDragging = true;
+        });
+        
+        document.addEventListener('touchmove', e => {
+            if(isDragging) {
+                const delta = e.touches[0].clientX - startX;
+                targetAngleY += delta * 0.005;
+                startX = e.touches[0].clientX;
+            }
+        });
+
+        document.addEventListener('touchend', () => isDragging = false);
+
+        // 动画循环
+        function animate() {
+            // 清空画布
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            // 平滑旋转
+            angleY += (targetAngleY - angleY) * 0.1;
+            // 自动慢速旋转
+            targetAngleY += 0.002;
+
+            // 排序：为了正确的遮挡关系，Z轴远的先画
+            particles.sort((a, b) => {
+                // 简化的深度排序
+                const cos = Math.cos(angleY);
+                const sin = Math.sin(angleY);
+                const zA = a.z * cos + a.x * sin;
+                const zB = b.z * cos + b.x * sin;
+                return zB - zA;
+            });
+
+            particles.forEach(p => p.draw());
+
+            requestAnimationFrame(animate);
+        }
+
         animate();
     </script>
 </body>
