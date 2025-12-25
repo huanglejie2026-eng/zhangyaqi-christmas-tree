@@ -3,198 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Merry Christmas</title>
+    <title>🎄 Christmas Magic</title>
+    
     <style>
-        body {
-            background-color: #000;
-            margin: 0;
-            overflow: hidden;
-            font-family: 'Times New Roman', serif;
-            touch-action: none; /* 禁止浏览器默认缩放 */
+        :root { --c-gold: #d4af37; --c-cream: #fceea7; }
+        body { 
+            margin: 0; overflow: hidden; background-color: #000; 
+            font-family: 'Times New Roman', serif; 
+            -webkit-tap-highlight-color: transparent; 
         }
-        canvas {
-            display: block;
+        
+        /* 华丽的加载动画 */
+        #loader {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 9999; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; transition: opacity 1.5s ease;
         }
-        #ui {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
+        .spinner {
+            width: 50px; height: 50px; 
+            border: 2px solid rgba(212, 175, 55, 0.2);
+            border-top: 2px solid var(--c-gold); 
+            border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+        }
+        .loader-text { 
+            color: var(--c-gold); font-size: 14px; letter-spacing: 3px; 
+            text-transform: uppercase; animation: pulse 2s infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+        /* UI 标题 */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none;
-            z-index: 10;
         }
         h1 {
-            color: #d4af37;
-            font-size: 40px;
-            margin: 0;
-            text-shadow: 0 0 10px rgba(212, 175, 55, 0.8);
+            position: absolute; top: 10%; width: 100%; text-align: center;
+            font-size: 36px; margin: 0; font-weight: normal;
+            background: linear-gradient(to bottom, #fff, var(--c-gold));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.6));
             letter-spacing: 2px;
+            z-index: 10;
         }
-        p {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 14px;
-            margin-top: 10px;
+        .tips {
+            position: absolute; bottom: 30px; width: 100%; text-align: center;
+            color: rgba(255, 255, 255, 0.4); font-size: 12px; letter-spacing: 1px;
+            z-index: 10;
         }
     </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.zhimg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.zhimg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
 </head>
 <body>
 
-    <div id="ui">
-        <h1>Merry Christmas</h1>
-        <p>✨ 拖动屏幕旋转 ✨</p>
+    <div id="loader">
+        <div class="spinner"></div>
+        <div class="loader-text">Loading Magic...</div>
     </div>
-    <canvas id="canvas"></canvas>
 
-    <script>
-        // 这是一个不需要任何外部库的 3D 引擎
-        // 所有的数学运算都在本地完成，速度极快且不依赖网络
+    <div id="ui-layer">
+        <h1>Merry Christmas</h1>
+        <div class="tips">✨ 拖动旋转 · 双击散开 ✨</div>
+    </div>
 
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-        let width, height;
-        let particles = [];
-        
-        // 3D 参数
-        const FOCAL_LENGTH = 400; // 焦距
-        let angleY = 0; // 旋转角度
-        let targetAngleY = 0;
+        // --- 配置 ---
+        const CONFIG = {
+            gold: 0xd4af37,
+            red: 0xff3333,
+            particleCount: 2000, // 粒子数量，手机端平衡点
+            dustCount: 1000
+        };
 
-        // 初始化画布
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resize);
-        resize();
-
-        // 粒子类
-        class Particle {
-            constructor(isTree) {
-                this.isTree = isTree;
-                this.reset();
+        // --- 核心程序 ---
+        class App {
+            constructor() {
+                this.init();
+                this.createWorld();
+                this.animate();
             }
 
-            reset() {
-                if (this.isTree) {
-                    // 圣诞树形状 (圆锥螺旋)
-                    this.h = Math.random(); // 高度 0-1
-                    const radius = 150 * (1 - this.h); // 底部宽，顶部窄
-                    const angle = this.h * 20 + Math.random() * 0.5; // 螺旋角度
-                    
-                    this.x = Math.cos(angle) * radius;
-                    this.y = (this.h - 0.5) * 400; // Y轴高度分布
-                    this.z = Math.sin(angle) * radius;
-                    
-                    // 颜色
-                    const r = Math.random();
-                    if(r > 0.9) this.color = '#fff'; // 白星
-                    else if(r > 0.6) this.color = '#d4af37'; // 金
-                    else this.color = '#2e8b57'; // 绿
-                    
-                    this.size = Math.random() * 3 + 1;
-                } else {
-                    // 背景雪花 (随机分布)
-                    this.x = (Math.random() - 0.5) * 1000;
-                    this.y = (Math.random() - 0.5) * 1000;
-                    this.z = (Math.random() - 0.5) * 1000;
-                    this.color = 'rgba(255,255,255,0.4)';
-                    this.size = Math.random() * 1.5;
-                }
+            init() {
+                // 渲染器
+                this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 限制像素比防卡顿
+                this.renderer.toneMapping = THREE.ReinhardToneMapping;
+                document.body.appendChild(this.renderer.domElement);
+
+                // 场景与相机
+                this.scene = new THREE.Scene();
+                this.scene.fog = new THREE.FogExp2(0x000000, 0.02);
                 
-                // 闪烁参数
-                this.alpha = Math.random();
-                this.alphaSpeed = 0.02 + Math.random() * 0.03;
-            }
-
-            draw() {
-                // 1. 旋转公式 (绕Y轴)
-                const cos = Math.cos(angleY);
-                const sin = Math.sin(angleY);
-                const rx = this.x * cos - this.z * sin;
-                const rz = this.z * cos + this.x * sin;
-                
-                // 2. 投影公式 (3D -> 2D)
-                // 加上深度偏移，防止除以0
-                const perspective = FOCAL_LENGTH / (FOCAL_LENGTH + rz + 400); 
-                
-                const screenX = width / 2 + rx * perspective;
-                const screenY = height / 2 + this.y * perspective;
-                const screenSize = this.size * perspective;
-
-                // 3. 绘制
-                if (perspective > 0) { // 只绘制在前面的
-                    this.alpha += this.alphaSpeed;
-                    if(this.alpha > 1 || this.alpha < 0.2) this.alphaSpeed *= -1;
-                    
-                    ctx.save();
-                    ctx.globalAlpha = Math.abs(this.alpha);
-                    ctx.fillStyle = this.color;
-                    ctx.beginPath();
-                    ctx.arc(screenX, screenY, screenSize, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.restore();
-                }
-            }
-        }
-
-        // 创建粒子
-        function init() {
-            particles = [];
-            // 800个组成树
-            for(let i=0; i<800; i++) particles.push(new Particle(true));
-            // 400个背景雪花
-            for(let i=0; i<400; i++) particles.push(new Particle(false));
-        }
-        init();
-
-        // 交互逻辑 (触摸旋转)
-        let startX = 0;
-        let isDragging = false;
-
-        document.addEventListener('touchstart', e => {
-            startX = e.touches[0].clientX;
-            isDragging = true;
-        });
-        
-        document.addEventListener('touchmove', e => {
-            if(isDragging) {
-                const delta = e.touches[0].clientX - startX;
-                targetAngleY += delta * 0.005;
-                startX = e.touches[0].clientX;
-            }
-        });
-
-        document.addEventListener('touchend', () => isDragging = false);
-
-        // 动画循环
-        function animate() {
-            // 清空画布
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, width, height);
-
-            // 平滑旋转
-            angleY += (targetAngleY - angleY) * 0.1;
-            // 自动慢速旋转
-            targetAngleY += 0.002;
-
-            // 排序：为了正确的遮挡关系，Z轴远的先画
-            particles.sort((a, b) => {
-                // 简化的深度排序
-                const cos = Math.cos(angleY);
-                const sin = Math.sin(angleY);
-                const zA = a.z * cos + a.x * sin;
-                const zB = b.z * cos + b.x * sin;
-                return zB - zA;
-            });
-
-            particles.forEach(p => p.draw());
-
-            requestAnimationFrame(animate);
-        }
-
-        animate();
-    </script>
-</body>
-</html>
+                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.
