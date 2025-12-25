@@ -3,111 +3,243 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🎄 Christmas Magic</title>
-    
+    <title>Merry Christmas</title>
     <style>
-        :root { --c-gold: #d4af37; --c-cream: #fceea7; }
-        body { 
-            margin: 0; overflow: hidden; background-color: #000; 
-            font-family: 'Times New Roman', serif; 
-            -webkit-tap-highlight-color: transparent; 
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505; /* 深黑背景 */
+            font-family: 'Times New Roman', serif;
+            touch-action: none;
         }
         
-        /* 华丽的加载动画 */
-        #loader {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; z-index: 9999; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; transition: opacity 1.5s ease;
+        #canvas-container {
+            width: 100%;
+            height: 100vh;
+            filter: contrast(1.2) brightness(1.2); /* 增强视觉质感 */
         }
-        .spinner {
-            width: 50px; height: 50px; 
-            border: 2px solid rgba(212, 175, 55, 0.2);
-            border-top: 2px solid var(--c-gold); 
-            border-radius: 50%;
-            animation: spin 1s linear infinite; margin-bottom: 20px;
-            box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
-        }
-        .loader-text { 
-            color: var(--c-gold); font-size: 14px; letter-spacing: 3px; 
-            text-transform: uppercase; animation: pulse 2s infinite;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 
-        /* UI 标题 */
-        #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        /* 优雅的文字层 */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none;
-        }
-        h1 {
-            position: absolute; top: 10%; width: 100%; text-align: center;
-            font-size: 36px; margin: 0; font-weight: normal;
-            background: linear-gradient(to bottom, #fff, var(--c-gold));
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.6));
-            letter-spacing: 2px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 40px 0;
+            box-sizing: border-box;
             z-index: 10;
         }
-        .tips {
-            position: absolute; bottom: 30px; width: 100%; text-align: center;
-            color: rgba(255, 255, 255, 0.4); font-size: 12px; letter-spacing: 1px;
-            z-index: 10;
-        }
-    </style>
 
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.zhimg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.zhimg.com/three@0.160.0/examples/jsm/"
+        h1 {
+            color: #d4af37;
+            font-size: 42px;
+            font-weight: normal;
+            margin: 0;
+            text-align: center;
+            letter-spacing: 2px;
+            /* 文字流光特效 */
+            background: linear-gradient(45deg, #d4af37, #fff, #d4af37);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shine 3s linear infinite;
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
         }
-    }
-    </script>
+
+        .tips {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+        }
+
+        @keyframes shine { to { background-position: 200% center; } }
+    </style>
 </head>
 <body>
 
-    <div id="loader">
-        <div class="spinner"></div>
-        <div class="loader-text">Loading Magic...</div>
-    </div>
-
-    <div id="ui-layer">
+    <div class="overlay">
         <h1>Merry Christmas</h1>
-        <div class="tips">✨ 拖动旋转 · 双击散开 ✨</div>
+        <div class="tips">✨ 拖动屏幕旋转视角 ✨</div>
     </div>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
 
-        // --- 配置 ---
-        const CONFIG = {
-            gold: 0xd4af37,
-            red: 0xff3333,
-            particleCount: 2000, // 粒子数量，手机端平衡点
-            dustCount: 1000
-        };
+    <script>
+        /**
+         * 纯原生 3D 粒子引擎 (无需 Three.js)
+         * 使用 Canvas 2D + 数学投影 + 混合模式模拟发光
+         */
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
 
-        // --- 核心程序 ---
-        class App {
+        let width, height;
+        let particles = [];
+        
+        // 3D 视图参数
+        let angleY = 0;
+        let targetAngleY = 0.001; // 初始自转
+        const focalLength = 800; // 焦距，越小透视越强
+        
+        // 初始化
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Particle {
             constructor() {
-                this.init();
-                this.createWorld();
-                this.animate();
+                this.reset();
             }
 
-            init() {
-                // 渲染器
-                this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 限制像素比防卡顿
-                this.renderer.toneMapping = THREE.ReinhardToneMapping;
-                document.body.appendChild(this.renderer.domElement);
-
-                // 场景与相机
-                this.scene = new THREE.Scene();
-                this.scene.fog = new THREE.FogExp2(0x000000, 0.02);
+            reset() {
+                // 螺旋圆锥算法 (圣诞树核心)
+                this.progress = Math.random(); // 0 (底) -> 1 (顶)
                 
-                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.
+                // 螺旋参数
+                const spiralLoops = 8; 
+                const angle = this.progress * Math.PI * 2 * spiralLoops + Math.random() * 0.5;
+                
+                // 半径随高度变小
+                const maxRadius = 200; // 底部半径
+                const radius = maxRadius * (1 - this.progress) + Math.random() * 10;
+
+                this.x = Math.cos(angle) * radius;
+                this.y = (this.progress - 0.5) * 600; // 高度范围
+                this.z = Math.sin(angle) * radius;
+
+                // 颜色随机
+                const seed = Math.random();
+                if (seed > 0.95) {
+                    this.color = '#ffffff'; // 星光白
+                    this.baseSize = 2.5;
+                    this.isSparkle = true;
+                } else if (seed > 0.7) {
+                    this.color = '#ff3333'; // 装饰红
+                    this.baseSize = 2;
+                    this.isSparkle = false;
+                } else {
+                    this.color = '#d4af37'; // 香槟金
+                    this.baseSize = 1.5;
+                    this.isSparkle = false;
+                }
+
+                // 闪烁动画参数
+                this.alpha = Math.random();
+                this.alphaSpeed = 0.01 + Math.random() * 0.02;
+            }
+
+            project() {
+                // 1. 绕 Y 轴旋转
+                const cos = Math.cos(angleY);
+                const sin = Math.sin(angleY);
+                
+                const rx = this.x * cos - this.z * sin;
+                const ry = this.y;
+                const rz = this.z * cos + this.x * sin;
+
+                // 2. 透视投影 (3D -> 2D)
+                // z 越小(越远) scale 越小
+                const depth = focalLength + rz; // 深度
+                const scale = focalLength / depth;
+
+                this.screenX = width / 2 + rx * scale;
+                this.screenY = height / 2 + ry * scale + 50; // +50 把树往下挪一点
+                this.screenSize = this.baseSize * scale;
+                this.depth = depth; // 用于排序
+            }
+
+            draw() {
+                if (this.depth < 0) return; // 剪裁掉相后的点
+
+                // 闪烁逻辑
+                this.alpha += this.alphaSpeed;
+                if (this.alpha > 1 || this.alpha < 0.2) this.alphaSpeed *= -1;
+                
+                // 核心：使用 RadialGradient 模拟发光粒子
+                // 这比简单的 rect 看起来高级得多
+                ctx.globalAlpha = Math.abs(this.alpha);
+                
+                ctx.beginPath();
+                ctx.arc(this.screenX, this.screenY, this.screenSize, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // 如果是“星光”，加一点十字光芒
+                if (this.isSparkle && Math.abs(this.alpha) > 0.8) {
+                    ctx.globalAlpha = 0.4;
+                    ctx.beginPath();
+                    ctx.moveTo(this.screenX - this.screenSize*4, this.screenY);
+                    ctx.lineTo(this.screenX + this.screenSize*4, this.screenY);
+                    ctx.moveTo(this.screenX, this.screenY - this.screenSize*4);
+                    ctx.lineTo(this.screenX, this.screenY + this.screenSize*4);
+                    ctx.strokeStyle = '#fff';
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // 创建 1200 个粒子
+        for (let i = 0; i < 1200; i++) particles.push(new Particle());
+
+        // 交互逻辑
+        let startX = 0;
+        let isDragging = false;
+        
+        document.addEventListener('touchstart', e => {
+            startX = e.touches[0].clientX;
+            isDragging = true;
+        }, {passive: false});
+
+        document.addEventListener('touchmove', e => {
+            if(isDragging) {
+                e.preventDefault(); // 防止滚动屏幕
+                const delta = e.touches[0].clientX - startX;
+                targetAngleY += delta * 0.005;
+                startX = e.touches[0].clientX;
+            }
+        }, {passive: false});
+
+        document.addEventListener('touchend', () => isDragging = false);
+
+        // 动画循环
+        function animate() {
+            // 清空画布 (使用黑色覆盖)
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            // 关键：叠加模式 "lighter"
+            // 这会让重叠的粒子产生高亮辉光效果，看起来像 WebGL
+            ctx.globalCompositeOperation = 'lighter';
+
+            // 平滑旋转
+            angleY += (targetAngleY - angleY) * 0.05;
+            targetAngleY += 0.002; // 自动旋转增量
+
+            // 1. 计算所有位置
+            particles.forEach(p => p.project());
+
+            // 2. 深度排序 (Z-Sort)
+            // 让离镜头近的粒子遮挡远的，虽然在 lighter 模式下不那么重要，但能增加立体感
+            particles.sort((a, b) => b.depth - a.depth);
+
+            // 3. 绘制
+            particles.forEach(p => p.draw());
+
+            // 恢复默认混合模式以绘制文字等(如果有)
+            ctx.globalCompositeOperation = 'source-over';
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
